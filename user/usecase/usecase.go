@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/0loff/grade_gophermart/internal/logger"
@@ -92,4 +93,26 @@ func (u *UserUseCase) BuildToken(ctx context.Context, uuid string) (string, erro
 	}
 
 	return tokenString, err
+}
+
+func (u *UserUseCase) ParseToken(ctx context.Context, accessToken string) (string, error) {
+	token, err := jwt.ParseWithClaims(accessToken, &AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return u.signingKey, nil
+	})
+
+	if err != nil {
+		logger.Log.Error("The value of the authentication token could not be parsed", zap.Error(err))
+		return "", err
+	}
+
+	claims, ok := token.Claims.(*AuthClaims)
+	if !ok || !token.Valid {
+		logger.Log.Error("Invalid access token", zap.Error(err))
+		return "", user.ErrInvalidAccessToken
+	}
+
+	return claims.UserID, nil
 }

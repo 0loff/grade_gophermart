@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -11,35 +10,46 @@ import (
 
 	"github.com/0loff/grade_gophermart/config"
 	"github.com/0loff/grade_gophermart/internal/logger"
+	"github.com/0loff/grade_gophermart/order"
+	orderhttp "github.com/0loff/grade_gophermart/order/delivery/http"
+	orderpostgres "github.com/0loff/grade_gophermart/order/repository/postgres"
+	orderusecase "github.com/0loff/grade_gophermart/order/usecase"
 	"github.com/0loff/grade_gophermart/user"
 	userhttp "github.com/0loff/grade_gophermart/user/delivery/http"
 	userpostgres "github.com/0loff/grade_gophermart/user/repository/postgres"
 	userusecase "github.com/0loff/grade_gophermart/user/usecase"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type App struct {
 	httpServer *http.Server
 
-	userUC user.UseCase
+	userUC  user.UseCase
+	orderUC order.UseCase
 }
 
 func NewApp(cfg config.Config) *App {
-	db, err := initDB(cfg.DatabaseDSN)
+	dbpool, err := initDB(cfg.DatabaseDSN)
 	if err != nil {
 		logger.Log.Error("Unable to create database instance", zap.Error(err))
 	}
 
-	userRepo := userpostgres.NewUserRepository(db)
+	userRepo := userpostgres.NewUserRepository(dbpool)
+	orderRepo := orderpostgres.NewOrderRepository(dbpool)
 
 	return &App{
 		userUC: userusecase.NewUserUseCase(
 			userRepo,
 			[]byte(cfg.SigningKey),
 			time.Hour*3,
+		),
+		orderUC: orderusecase.NewOrderUseCase(
+			orderRepo,
 		),
 	}
 }
@@ -49,9 +59,12 @@ func (a *App) Run(cfg config.Config) error {
 	router.Use(logger.RequestLogger)
 
 	userhttp.RegisterHTTPEndpoints(router, a.userUC)
+	authMiddleware := userhttp.NewAuthMiddleware(a.userUC).Handle
 
-	router.Route("/api/user/", func(router chi.Router) {
+	router.Group(func(r chi.Router) {
+		r.Use(authMiddleware)
 
+		orderhttp.RegisterHTTPEndpoints(r, a.orderUC)
 	})
 
 	a.httpServer = &http.Server{
@@ -78,16 +91,22 @@ func (a *App) Run(cfg config.Config) error {
 	return a.httpServer.Shutdown(ctx)
 }
 
-func initDB(DSN string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", DSN)
+func initDB(DSN string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(context.Background(), DSN)
 	if err != nil {
 		log.Fatal("Error occured while established connection to database", err)
 	}
 
-	err = db.Ping()
+	connect, err := pool.Acquire(context.Background())
+	if err != nil {
+		log.Fatal("Error while acquiring connection from the db pool")
+	}
+	defer connect.Release()
+
+	err = connect.Ping(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return db, err
+	return pool, err
 }
