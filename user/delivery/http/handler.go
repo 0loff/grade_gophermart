@@ -10,6 +10,11 @@ import (
 	"go.uber.org/zap"
 )
 
+type Credentials struct {
+	Username string `json:"login"`
+	Password string `json:"password"`
+}
+
 type Handler struct {
 	useCase user.UseCase
 }
@@ -18,11 +23,6 @@ func NewHandler(useCase user.UseCase) *Handler {
 	return &Handler{
 		useCase: useCase,
 	}
-}
-
-type Credentials struct {
-	Username string `json:"login"`
-	Password string `json:"password"`
 }
 
 func (h *Handler) SignUp(w http.ResponseWriter, r *http.Request) {

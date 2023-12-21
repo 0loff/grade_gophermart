@@ -23,23 +23,23 @@ func NewOrderUseCase(
 	}
 }
 
-func (o OrderUseCase) SetOrder(ctx context.Context, orderNum, uuid string) error {
-	err := goluhn.Validate(orderNum)
-	if err != nil || len(orderNum) < 3 {
+func (o OrderUseCase) SetOrder(ctx context.Context, Order models.Order) error {
+	err := goluhn.Validate(Order.OrderNum)
+	if err != nil || len(Order.OrderNum) < 3 {
 		logger.Log.Error("Order number is incorrect", zap.Error(err))
 		return order.ErrInvalidOrderNumber
 	}
 
-	if err := o.orderRepo.InsertOrder(ctx, orderNum, uuid); err != nil {
+	if err := o.orderRepo.InsertOrder(ctx, Order); err != nil {
 		switch {
 		case errors.Is(err, order.ErrOrderBeenRegistered):
-			orderUUID, err := o.orderRepo.GetUUIDByOrder(ctx, orderNum)
+			orderUUID, err := o.orderRepo.GetUUIDByOrder(ctx, Order.OrderNum)
 			if err != nil {
 				logger.Log.Error("")
 				return err
 			}
 
-			if orderUUID != uuid {
+			if orderUUID != Order.UUID {
 				logger.Log.Error("The order belongs to another user")
 				return order.ErrAnotherUserOrder
 			}

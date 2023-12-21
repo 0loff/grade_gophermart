@@ -7,6 +7,6 @@ import (
 )
 
 type UseCase interface {
-	SetOrder(ctx context.Context, order, uuid string) error
+	SetOrder(ctx context.Context, order models.Order) error
 	GetUserOrders(ctx context.Context, uuid string) ([]models.Order, error)
 }

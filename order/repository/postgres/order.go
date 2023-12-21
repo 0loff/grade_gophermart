@@ -15,7 +15,7 @@ import (
 )
 
 type Order struct {
-	ID   uint32 `db:"_id, omitempty"`
+	ID   uint32 `db:"_id,omitempty"`
 	Num  string `db:"order_number"`
 	UUID string `db:"uuid"`
 }
@@ -38,7 +38,8 @@ func (r OrderRepository) CreateTable() {
 		id serial PRIMARY KEY,
 		order_num TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'NEW',
-		accrual INTEGER,
+		accrual NUMERIC,
+		sum NUMERIC,
 		uuid text,
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 		updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -57,11 +58,11 @@ func (r OrderRepository) CreateTable() {
 	}
 }
 
-func (r OrderRepository) InsertOrder(ctx context.Context, orderNum, uid string) error {
+func (r OrderRepository) InsertOrder(ctx context.Context, Order models.Order) error {
 	now := time.Now()
 
-	_, err := r.dbpool.Exec(context.Background(), `INSERT INTO orders(order_num, uuid, created_at, updated_at) VALUES ($1, $2, $3, $4)`,
-		orderNum, uid, now.Format(time.RFC3339), now.Format(time.RFC3339))
+	_, err := r.dbpool.Exec(context.Background(), `INSERT INTO orders(order_num, sum, uuid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+		Order.OrderNum, Order.Sum, Order.UUID, now.Format(time.RFC3339), now.Format(time.RFC3339))
 	if err != nil {
 		var pgErr *pgconn.PgError
 
@@ -121,4 +122,52 @@ func (r OrderRepository) GetOrdersByUUID(ctx context.Context, uuid string) ([]mo
 	}
 
 	return Orders, nil
+}
+
+func (r OrderRepository) GetBalance(ctx context.Context, uuid string) (models.Balance, error) {
+	row := r.dbpool.QueryRow(ctx, `SELECT coalesce(sum(accrual), 0), sum(sum) FROM orders WHERE uuid = $1`, uuid)
+
+	var Balance models.Balance
+	if err := row.Scan(&Balance.Current, &Balance.Withdraw); err != nil {
+		logger.Log.Error("Unable to parse the received balance", zap.Error(err))
+		return Balance, err
+	}
+
+	return Balance, nil
+}
+
+func (r OrderRepository) GetDrawalsByUUID(ctx context.Context, uuid string) ([]models.Drawall, error) {
+	var Drawals []models.Drawall
+
+	rows, err := r.dbpool.Query(
+		ctx, `SELECT order_num, sum, created_at
+		FROM orders
+		WHERE sum != 0 AND uuid = $1
+		ORDER BY created_at DESC`, uuid)
+	if err != nil {
+		logger.Log.Error("Unrecognized data from the database \n", zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			Drawall   models.Drawall
+			createdAt time.Time
+		)
+		if err := rows.Scan(&Drawall.Order, &Drawall.Sum, &createdAt); err != nil {
+			logger.Log.Error("Unable to parse the received row", zap.Error(err))
+			continue
+		}
+
+		Drawall.ProcessedAt = createdAt.Format(time.RFC3339)
+		Drawals = append(Drawals, Drawall)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Log.Error("Unexpected error from parse data in rows next loop", zap.Error(err))
+		return nil, err
+	}
+
+	return Drawals, err
 }

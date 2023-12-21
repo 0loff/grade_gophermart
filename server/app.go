@@ -8,9 +8,13 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/0loff/grade_gophermart/balance"
+	balancehttp "github.com/0loff/grade_gophermart/balance/delivery/http"
+	balanceusecase "github.com/0loff/grade_gophermart/balance/usecase"
 	"github.com/0loff/grade_gophermart/config"
 	"github.com/0loff/grade_gophermart/internal/logger"
 	"github.com/0loff/grade_gophermart/order"
+
 	orderhttp "github.com/0loff/grade_gophermart/order/delivery/http"
 	orderpostgres "github.com/0loff/grade_gophermart/order/repository/postgres"
 	orderusecase "github.com/0loff/grade_gophermart/order/usecase"
@@ -29,8 +33,9 @@ import (
 type App struct {
 	httpServer *http.Server
 
-	userUC  user.UseCase
-	orderUC order.UseCase
+	userUC    user.UseCase
+	orderUC   order.UseCase
+	balanceUC balance.UseCase
 }
 
 func NewApp(cfg config.Config) *App {
@@ -51,6 +56,9 @@ func NewApp(cfg config.Config) *App {
 		orderUC: orderusecase.NewOrderUseCase(
 			orderRepo,
 		),
+		balanceUC: balanceusecase.NewBalanceUseCase(
+			orderRepo,
+		),
 	}
 }
 
@@ -65,6 +73,7 @@ func (a *App) Run(cfg config.Config) error {
 		r.Use(authMiddleware)
 
 		orderhttp.RegisterHTTPEndpoints(r, a.orderUC)
+		balancehttp.RegisterHTTPEndpoints(r, a.balanceUC)
 	})
 
 	a.httpServer = &http.Server{

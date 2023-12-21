@@ -8,6 +8,7 @@ import (
 
 	"github.com/0loff/grade_gophermart/internal/logger"
 	"github.com/0loff/grade_gophermart/internal/utils"
+	"github.com/0loff/grade_gophermart/models"
 	"github.com/0loff/grade_gophermart/order"
 	"go.uber.org/zap"
 )
@@ -23,7 +24,7 @@ func NewHandler(useCase order.UseCase) *Handler {
 }
 
 func (h *Handler) SetOrder(w http.ResponseWriter, r *http.Request) {
-	uid, ok := utils.GetCtxUID(r.Context())
+	uuid, ok := utils.GetCtxUID(r.Context())
 	if !ok {
 		logger.Log.Error("Cannot get UID from context")
 	}
@@ -35,7 +36,12 @@ func (h *Handler) SetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = h.useCase.SetOrder(r.Context(), string(body), uid); err != nil {
+	Order := &models.Order{
+		OrderNum: string(body),
+		UUID:     uuid,
+	}
+
+	if err = h.useCase.SetOrder(r.Context(), *Order); err != nil {
 		switch {
 		case errors.Is(err, order.ErrInvalidOrderNumber):
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -85,5 +91,4 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-
 }
