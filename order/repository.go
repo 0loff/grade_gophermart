@@ -12,4 +12,6 @@ type Repository interface {
 	GetOrdersByUUID(ctx context.Context, uuid string) ([]models.Order, error)
 	GetBalance(ctx context.Context, uuid string) (models.Balance, error)
 	GetDrawalsByUUID(ctx context.Context, uuid string) ([]models.Drawall, error)
+	GetPendingOrders(ctx context.Context) ([]models.Order, error)
+	UpdatePendingOrder(ctx context.Context, orderUpdate models.AccrualResponse)
 }

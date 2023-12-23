@@ -12,6 +12,7 @@ import (
 	balancehttp "github.com/0loff/grade_gophermart/balance/delivery/http"
 	balanceusecase "github.com/0loff/grade_gophermart/balance/usecase"
 	"github.com/0loff/grade_gophermart/config"
+	accrualclient "github.com/0loff/grade_gophermart/internal/accrualClient"
 	"github.com/0loff/grade_gophermart/internal/logger"
 	"github.com/0loff/grade_gophermart/order"
 
@@ -46,6 +47,8 @@ func NewApp(cfg config.Config) *App {
 
 	userRepo := userpostgres.NewUserRepository(dbpool)
 	orderRepo := orderpostgres.NewOrderRepository(dbpool)
+
+	accrualclient.NewAccrualClient(orderRepo, cfg.AccrualSystemAddres)
 
 	return &App{
 		userUC: userusecase.NewUserUseCase(

@@ -61,7 +61,7 @@ func (r OrderRepository) CreateTable() {
 func (r OrderRepository) InsertOrder(ctx context.Context, Order models.Order) error {
 	now := time.Now()
 
-	_, err := r.dbpool.Exec(context.Background(), `INSERT INTO orders(order_num, sum, uuid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+	_, err := r.dbpool.Exec(ctx, `INSERT INTO orders(order_num, sum, uuid, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
 		Order.OrderNum, Order.Sum, Order.UUID, now.Format(time.RFC3339), now.Format(time.RFC3339))
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -77,7 +77,7 @@ func (r OrderRepository) InsertOrder(ctx context.Context, Order models.Order) er
 		}
 	}
 
-	return nil
+	return err
 }
 
 func (r OrderRepository) GetUUIDByOrder(ctx context.Context, order string) (string, error) {
@@ -125,7 +125,7 @@ func (r OrderRepository) GetOrdersByUUID(ctx context.Context, uuid string) ([]mo
 }
 
 func (r OrderRepository) GetBalance(ctx context.Context, uuid string) (models.Balance, error) {
-	row := r.dbpool.QueryRow(ctx, `SELECT coalesce(sum(accrual), 0), sum(sum) FROM orders WHERE uuid = $1`, uuid)
+	row := r.dbpool.QueryRow(ctx, `SELECT coalesce(sum(accrual) - sum(sum), 0), sum(sum) FROM orders WHERE uuid = $1`, uuid)
 
 	var Balance models.Balance
 	if err := row.Scan(&Balance.Current, &Balance.Withdraw); err != nil {
@@ -170,4 +170,47 @@ func (r OrderRepository) GetDrawalsByUUID(ctx context.Context, uuid string) ([]m
 	}
 
 	return Drawals, err
+}
+
+func (r OrderRepository) GetPendingOrders(ctx context.Context) ([]models.Order, error) {
+	var PendingOrders []models.Order
+
+	rows, err := r.dbpool.Query(
+		ctx, `SELECT order_num, status
+		FROM orders
+		WHERE status NOT IN ('INVALID', 'PROCESSED')`)
+	if err != nil {
+		logger.Log.Error("Unrecognized data from the database \n", zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var Order models.Order
+		if err := rows.Scan(&Order.OrderNum, &Order.Status); err != nil {
+			logger.Log.Error("Unable to parse the received row", zap.Error(err))
+			continue
+		}
+		PendingOrders = append(PendingOrders, Order)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Log.Error("Unexpected error from parse data in rows next loop", zap.Error(err))
+		return nil, err
+	}
+
+	return PendingOrders, err
+}
+
+func (r OrderRepository) UpdatePendingOrder(ctx context.Context, Order models.AccrualResponse) {
+	now := time.Now()
+
+	_, err := r.dbpool.Exec(
+		ctx, `UPDATE orders 
+		SET status = $1, accrual = $2, updated_at = $3 
+		WHERE order_num = $4`,
+		Order.Status, Order.Accrual, now.Format(time.RFC3339), Order.Order)
+	if err != nil {
+		logger.Log.Error("Cannot update order after accrual response", zap.Error(err))
+	}
 }
