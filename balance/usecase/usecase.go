@@ -23,7 +23,7 @@ func NewBalanceUseCase(
 	}
 }
 
-func (b BalanceUseCase) GetUserBalance(ctx context.Context, uuid string) (models.Balance, error) {
+func (b *BalanceUseCase) GetUserBalance(ctx context.Context, uuid string) (models.Balance, error) {
 	Balance, err := b.orderRepo.GetBalance(ctx, uuid)
 	if err != nil {
 		logger.Log.Error("impossible to get user balance", zap.Error(err))
@@ -32,7 +32,7 @@ func (b BalanceUseCase) GetUserBalance(ctx context.Context, uuid string) (models
 	return Balance, err
 }
 
-func (b BalanceUseCase) SetOrderWithdraw(ctx context.Context, Order models.Order) error {
+func (b *BalanceUseCase) SetOrderWithdraw(ctx context.Context, Order models.Order) error {
 	err := goluhn.Validate(Order.OrderNum)
 	if err != nil || len(Order.OrderNum) < 3 {
 		logger.Log.Error("Order number is incorrect", zap.Error(err))
@@ -57,6 +57,6 @@ func (b BalanceUseCase) SetOrderWithdraw(ctx context.Context, Order models.Order
 	return nil
 }
 
-func (b BalanceUseCase) GetUserWithdrawals(ctx context.Context, uuid string) ([]models.Drawall, error) {
+func (b *BalanceUseCase) GetUserWithdrawals(ctx context.Context, uuid string) ([]models.Drawall, error) {
 	return b.orderRepo.GetDrawalsByUUID(ctx, uuid)
 }

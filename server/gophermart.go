@@ -12,7 +12,7 @@ import (
 	balancehttp "github.com/0loff/grade_gophermart/balance/delivery/http"
 	balanceusecase "github.com/0loff/grade_gophermart/balance/usecase"
 	"github.com/0loff/grade_gophermart/config"
-	accrualclient "github.com/0loff/grade_gophermart/internal/accrualClient"
+	"github.com/0loff/grade_gophermart/internal/accrual"
 	"github.com/0loff/grade_gophermart/internal/logger"
 	"github.com/0loff/grade_gophermart/order"
 
@@ -31,7 +31,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-type App struct {
+type Gophermart struct {
 	httpServer *http.Server
 
 	userUC    user.UseCase
@@ -39,8 +39,8 @@ type App struct {
 	balanceUC balance.UseCase
 }
 
-func NewApp(cfg config.Config) *App {
-	dbpool, err := initDB(cfg.DatabaseDSN)
+func NewGophermart(cfg config.Config, router *chi.Mux) *Gophermart {
+	dbpool, err := NewDB(cfg.DatabaseDSN)
 	if err != nil {
 		logger.Log.Error("Unable to create database instance", zap.Error(err))
 	}
@@ -48,9 +48,9 @@ func NewApp(cfg config.Config) *App {
 	userRepo := userpostgres.NewUserRepository(dbpool)
 	orderRepo := orderpostgres.NewOrderRepository(dbpool)
 
-	accrualclient.NewAccrualClient(orderRepo, cfg.AccrualSystemAddres)
+	accrual.NewAccrualClient(orderRepo, cfg.AccrualSystemAddres)
 
-	return &App{
+	gophermart := &Gophermart{
 		userUC: userusecase.NewUserUseCase(
 			userRepo,
 			[]byte(cfg.SigningKey),
@@ -63,35 +63,40 @@ func NewApp(cfg config.Config) *App {
 			orderRepo,
 		),
 	}
-}
 
-func (a *App) Run(cfg config.Config) error {
-	router := chi.NewRouter()
 	router.Use(logger.RequestLogger)
 
-	userhttp.RegisterHTTPEndpoints(router, a.userUC)
-	authMiddleware := userhttp.NewAuthMiddleware(a.userUC).Handle
+	userhttp.RegisterHTTPEndpoints(router, gophermart.userUC)
+	authMiddleware := userhttp.NewAuthMiddleware(gophermart.userUC).Handle
 
 	router.Group(func(r chi.Router) {
 		r.Use(authMiddleware)
 
-		orderhttp.RegisterHTTPEndpoints(r, a.orderUC)
-		balancehttp.RegisterHTTPEndpoints(r, a.balanceUC)
+		orderhttp.RegisterHTTPEndpoints(r, gophermart.orderUC)
+		balancehttp.RegisterHTTPEndpoints(r, gophermart.balanceUC)
 	})
 
-	a.httpServer = &http.Server{
+	gophermart.httpServer = &http.Server{
 		Addr:    cfg.Host,
 		Handler: router,
 	}
 
+	return gophermart
+}
+
+func (a *Gophermart) Run(cfg config.Config) error {
 	go func() {
 		if err := a.httpServer.ListenAndServe(); err != nil {
 			log.Fatal(err)
+
 		}
 	}()
 
 	logger.Sugar.Infoln("Host", cfg.Host)
+	return a.Shutdown()
+}
 
+func (a *Gophermart) Shutdown() error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, os.Interrupt)
 
@@ -103,7 +108,7 @@ func (a *App) Run(cfg config.Config) error {
 	return a.httpServer.Shutdown(ctx)
 }
 
-func initDB(DSN string) (*pgxpool.Pool, error) {
+func NewDB(DSN string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(context.Background(), DSN)
 	if err != nil {
 		log.Fatal("Error occured while established connection to database", err)

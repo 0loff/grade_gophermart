@@ -1,4 +1,4 @@
-package accrualclient
+package accrual
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type AccrualClient struct {
+type Accrual struct {
 	orderRepo       order.Repository
 	accrualEndpoint string
 	OrderCh         chan string
@@ -23,32 +23,32 @@ func NewAccrualClient(
 	orderRepo order.Repository,
 	endpoint string,
 ) {
-	service := &AccrualClient{
+	accrual := &Accrual{
 		orderRepo:       orderRepo,
 		accrualEndpoint: endpoint,
 		OrderCh:         make(chan string, 10),
 	}
 
-	go service.AccrualManager(service.OrderCh)
+	go accrual.Run(accrual.OrderCh)
 }
 
-func (ac AccrualClient) AccrualManager(OrderChan chan string) {
+func (a Accrual) Run(OrderChan chan string) {
 	ticker := time.NewTicker(15 * time.Second)
 
 	for {
 		select {
 		case Order := <-OrderChan:
-			orderUpdate := ac.AccrualRequest(Order)
-			ac.orderRepo.UpdatePendingOrder(context.Background(), orderUpdate)
+			orderUpdate := a.AccrualRequest(Order)
+			a.orderRepo.UpdatePendingOrder(context.Background(), orderUpdate)
 
 		case <-ticker.C:
-			ac.GetPendingOrders()
+			a.GetPendingOrders()
 		}
 	}
 }
 
-func (ac AccrualClient) GetPendingOrders() {
-	orders, err := ac.orderRepo.GetPendingOrders(context.Background())
+func (a Accrual) GetPendingOrders() {
+	orders, err := a.orderRepo.GetPendingOrders(context.Background())
 	if err != nil {
 		logger.Log.Error("Unable to get list of pending orders", zap.Error(err))
 	}
@@ -58,11 +58,11 @@ func (ac AccrualClient) GetPendingOrders() {
 		ordersList = append(ordersList, order.OrderNum)
 	}
 
-	ordersChls := ac.ChGenerator(ordersList)
-	ac.MergeChs(ordersChls)
+	ordersChls := a.ChGenerator(ordersList)
+	a.MergeChs(ordersChls)
 }
 
-func (ac AccrualClient) ChGenerator(OrderList []string) chan string {
+func (a Accrual) ChGenerator(OrderList []string) chan string {
 	inputCh := make(chan string)
 
 	go func() {
@@ -76,7 +76,7 @@ func (ac AccrualClient) ChGenerator(OrderList []string) chan string {
 	return inputCh
 }
 
-func (ac AccrualClient) MergeChs(resultChan ...chan string) {
+func (a Accrual) MergeChs(resultChan ...chan string) {
 	var wg sync.WaitGroup
 
 	for _, ch := range resultChan {
@@ -85,7 +85,7 @@ func (ac AccrualClient) MergeChs(resultChan ...chan string) {
 
 		go func() {
 			for data := range chClosure {
-				ac.OrderCh <- data
+				a.OrderCh <- data
 			}
 			wg.Done()
 		}()
@@ -96,9 +96,9 @@ func (ac AccrualClient) MergeChs(resultChan ...chan string) {
 	}()
 }
 
-func (ac AccrualClient) AccrualRequest(OrderNumber string) models.AccrualResponse {
+func (a Accrual) AccrualRequest(OrderNumber string) models.AccrualResponse {
 	accrualOrder := new(models.AccrualResponse)
-	endpoint := ac.accrualEndpoint + "/api/orders/" + OrderNumber
+	endpoint := a.accrualEndpoint + "/api/orders/" + OrderNumber
 	client := &http.Client{}
 
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
