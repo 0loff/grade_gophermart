@@ -1,3 +1,14 @@
+# Применяемый архитектурный паттерн.
+
+В ходе реализации применялись принципы паттерна [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+
+# Абстрактное разделение доменов на 4 слоя:
+
+* Models
+* Repository
+* UseCase (Service)
+* Delivery (Content delivery/Доставка контента)
+
 # go-musthave-diploma-tpl
 
 Шаблон репозитория для индивидуального дипломного проекта курса «Go-разработчик»
