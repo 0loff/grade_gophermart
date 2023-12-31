@@ -13,6 +13,7 @@ import (
 	balanceusecase "github.com/0loff/grade_gophermart/balance/usecase"
 	"github.com/0loff/grade_gophermart/config"
 	"github.com/0loff/grade_gophermart/internal/accrual"
+	dbpoolconnect "github.com/0loff/grade_gophermart/internal/database/postgres"
 	"github.com/0loff/grade_gophermart/internal/logger"
 	"github.com/0loff/grade_gophermart/order"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -40,7 +40,7 @@ type Gophermart struct {
 }
 
 func NewGophermart(cfg config.Config, router *chi.Mux) *Gophermart {
-	dbpool, err := NewDB(cfg.DatabaseDSN)
+	dbpool, err := dbpoolconnect.NewDB(cfg.DatabaseDSN)
 	if err != nil {
 		logger.Log.Error("Unable to create database instance", zap.Error(err))
 	}
@@ -106,24 +106,4 @@ func (a *Gophermart) Shutdown() error {
 	defer shutdown()
 
 	return a.httpServer.Shutdown(ctx)
-}
-
-func NewDB(DSN string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), DSN)
-	if err != nil {
-		log.Fatal("Error occured while established connection to database", err)
-	}
-
-	connect, err := pool.Acquire(context.Background())
-	if err != nil {
-		log.Fatal("Error while acquiring connection from the db pool")
-	}
-	defer connect.Release()
-
-	err = connect.Ping(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return pool, err
 }
